@@ -1,0 +1,13 @@
+   Lundesgaard Collections API (http://lundesgaard.dk/lca)
+   Copyright 2007 Georg Lundesgaard (georg@lundesgaard.dk)
+
+   Collections API extending the Java Collections API. Currently it is 
+   providing a trie map (a java.util.Map implementation) using the algorithm 
+   specified in this Wikipedia article: 
+   
+   http://en.wikipedia.org/wiki/Trie
+   
+   License: Apache License Version 2.0
+
+   See LICENCE file for the project license and the NOTICE file for any copyright
+   notices
