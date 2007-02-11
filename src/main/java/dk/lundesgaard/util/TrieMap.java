@@ -19,20 +19,15 @@ import java.io.Serializable;
 import java.util.AbstractCollection;
 import java.util.AbstractMap;
 import java.util.AbstractSet;
-import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.ConcurrentModificationException;
-import java.util.Deque;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
 
-import com.sun.corba.se.spi.legacy.connection.GetEndPointInfoAgainException;
-
 public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Serializable {
 	private static final long serialVersionUID = 1L;
-	private static final String EMPTY_STRING = "";
 	
 	private transient Node root = new Node((char) 0, null, null, null, null);
 	private transient int size;
@@ -106,14 +101,21 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
 
 	public V remove(Object key) {
 		if (key == null) {
-			return removeEntry(root);
+			return remove(root);
 		}
 		String keyString = objectToString(key);
 		if (keyString == null) {
-			return removeEntry(root);
+			return remove(root);
 		}
 		Node node = getNode(root.firstChild, keyString, 0);
-		if (node != null && node.hasEntry()) {
+		if (node != null) {
+			return remove(node);
+		}
+		return null;
+	}
+	
+	private V remove(Node node) {
+		if (node.hasEntry()) {
 			return removeEntry(node);
 		}
 		return null;
@@ -140,16 +142,28 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
 	}
 	
 	private Node getNode(Node current, String keyString, int position) {
-		if (current == null || keyString.charAt(position) < current.keyPart) {
-			return null;
+		Node node = current;
+		for (int i = position; i < keyString.length();) {
+			if (node == null) {
+				node = null;
+				break;
+			}
+			char keyPart = keyString.charAt(i);
+			if (keyPart < node.keyPart) {
+				node = null;
+				break;
+			}
+			if (keyPart > node.keyPart) {
+				node = node.nextSibling;
+			}
+			else {
+				if (i + 1 < keyString.length()) {
+					node = node.firstChild;
+				}
+				i++;
+			}
 		}
-		if (keyString.charAt(position) > current.keyPart) {
-			return getNode(current.nextSibling, keyString, position);
-		}
-		if (position + 1 == keyString.length()) {
-			return current;
-		}
-		return getNode(current.firstChild, keyString, position + 1);
+		return node;
 	}
 	
 	private V put(Node current, String keyString, int position, K key, V value) {
@@ -157,7 +171,7 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
 		if (keyPart < current.keyPart || keyPart > current.keyPart) {
 			if (keyPart < current.keyPart) {
 				Node previous = current.previous;
-				Node node = new Node(keyString.charAt(position), current, null, previous, null);
+				Node node = new Node(keyPart, current, null, previous, null);
 				if (previous.firstChild == current) {
 					previous.firstChild = node;
 				}
@@ -166,18 +180,17 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
 				}
 				current.previous = node;
 				if (position + 1 < keyString.length()) {
-					node = createNodePath(current.previous, keyString, position + 1);
+					node = createNodePath(node,  keyString, position + 1);
 				}
-				createEntry(node, key, value);
-				return null;
+				return createEntry(node, key, value);
 			}
 			else if (current.nextSibling == null) {
-				Node node = new Node(keyString.charAt(position), null, null, current, null);
+				Node node = new Node(keyPart, null, null, current, null);
+				current.nextSibling = node;
 				if (position + 1 < keyString.length()) {
-					node = createNodePath(current.previous, keyString, position + 1);
+					node = createNodePath(node, keyString, position + 1);
 				}
-				createEntry(node, key, value);
-				return null;
+				return createEntry(node, key, value);
 			}
 			else {
 				return put(current.nextSibling, keyString, position, key, value);
@@ -199,7 +212,7 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
 		previous.firstChild = node;
 		for (int i = position + 1; i < keyString.length(); i++) {
 			previous = node;
-			node = new Node(keyString.charAt(position), null, null, previous, null);
+			node = new Node(keyString.charAt(i), null, null, previous, null);
 			previous.firstChild = node;
 		}
 		return node;
@@ -266,20 +279,44 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
 	}
 	
 	private Node getFirstEntryNode() {
-		return getNextEntryNode(root, true);
+		if (root.hasEntry()) {
+			return root;
+		}
+		return getNextEntryNode(root);
 	}
 	
-	private Node getNextEntryNode(Node current, boolean includeCurrent) {
-		if (current.hasEntry() && includeCurrent) {
-			return current;
-		}
+	private Node getNextEntryNode(Node current) {
 		if (current.hasChildren()) {
-			return getNextEntryNode(current.firstChild, true);
+			if (current.firstChild.hasEntry()) {
+				return current.firstChild;
+			}
+			return getNextEntryNode(current.firstChild);
 		}
 		if (current.hasSiblings()) {
-			return getNextEntryNode(current.nextSibling, true);
+			if (current.nextSibling.hasEntry()) {
+				return current.nextSibling;
+			}
+			return getNextEntryNode(current.nextSibling);
+		}
+		Node parent = getAncestorWithSiblings(current);
+		if (parent != null && parent.hasSiblings()) {
+			if (parent.nextSibling.hasEntry()) {
+				return parent.nextSibling;
+			}
+			return getNextEntryNode(parent.nextSibling);
 		}
 		return null;
+	}
+	
+	private Node getAncestorWithSiblings(Node node) {
+		Node previous = node.previous;
+		if (previous == null) {
+			return null;
+		}
+		if (previous.firstChild == node && previous.hasSiblings()) {
+			return previous;
+		}
+		return getAncestorWithSiblings(previous);
 	}
 	
 	private class Node implements Serializable {
@@ -318,6 +355,10 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
 			previous = null;
 			entry = null;
 		}
+		
+		public String toString() {
+			return keyPart + ", " + entry;
+		}
 	}
 	
 	private abstract class AbstractEntryIterator<T> implements Iterator<T> {
@@ -343,7 +384,7 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
 			if (modCount != expectedModCount) {
 				throw new ConcurrentModificationException();
 			}
-			next = getNextEntryNode(current, false);
+			next = getNextEntryNode(current);
 			return current.entry;
 		}
 		
@@ -468,7 +509,7 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
         }
 
         public boolean remove(Object o) {
-        	for (Node node = getFirstEntryNode(); node != null; node = getNextEntryNode(node, false)) {
+        	for (Node node = getFirstEntryNode(); node != null; node = getNextEntryNode(node)) {
         		Entry<K, V> entry = node.entry;
             	V value = entry.getValue();
             	if (value == null && o == null || value != null && value.equals(o)) {

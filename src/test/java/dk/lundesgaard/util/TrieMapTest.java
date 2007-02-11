@@ -46,11 +46,13 @@ public class TrieMapTest extends TestCase
 	private static final String KEY_03 = "zot";
 	private static final String KEY_UNKNOWN = "trie";
 	private static final String KEY_NULL = null;
+	private static final String KEY_BLANK = "";
 	private static final String VALUE_01 = "BAR";
 	private static final String VALUE_02 = "FOO";
 	private static final String VALUE_03 = "ZOT";
 	private static final String VALUE_UNKNOWN = "TRIE";
 	private static final String VALUE_NULL = "NULL";
+	private static final String VALUE_BLANK = "BLANK";
 	
 	private static final String[] KEYS = { KEY_NULL, KEY_01, KEY_02, KEY_03 };
 	private static final String[] VALUES = { VALUE_NULL, VALUE_01, VALUE_02, VALUE_03 };
@@ -59,7 +61,7 @@ public class TrieMapTest extends TestCase
 	private static final String FILE_TESTDATA = "testdata.properties";
 	private static final String FILE_TESTDATA_RANDOM = "testdata_random.properties";
 	private static final String FILE_TESTDATA_DICT = "testdata_dict.properties";
-	private static final int COUNT_ENTRIES = 100000;
+	private static final int COUNT_ENTRIES = 100;
 	private static final int TEST_RUNS = 1000;
 	private static long seed;
 	private static Random random;
@@ -155,7 +157,7 @@ public class TrieMapTest extends TestCase
     {
         return new TestSuite( TrieMapTest.class );
     }
-
+    
     /**
      * Full test of trie map.
      */
@@ -172,7 +174,7 @@ public class TrieMapTest extends TestCase
     	// test contains
     	containsTests(trieMap, KEYS, VALUES);
     	assertFalse("does not contain key: " + KEY_UNKNOWN, trieMap.containsKey(KEY_UNKNOWN));
-    	assertFalse("does not contain value: " + VALUE_UNKNOWN, trieMap.containsKey(VALUE_UNKNOWN));
+    	assertFalse("does not contain value: " + VALUE_UNKNOWN, trieMap.containsValue(VALUE_UNKNOWN));
     	
     	// test: entry set
     	entrySetTest(trieMap, KEYS, VALUES);
@@ -190,11 +192,15 @@ public class TrieMapTest extends TestCase
     	getTests(trieMap, KEYS, VALUES);
     	assertNull("get value with unknown key is null", trieMap.get(KEY_UNKNOWN));
     	
-    	// test: remove
-    	assertEquals("remove value with key \"" + KEY_NULL+ "\" equals \"" + VALUE_NULL + "\"", VALUE_NULL, trieMap.remove(KEY_NULL));
-    	assertNull("remove value with key \"" + KEY_NULL+ "\" is null", trieMap.remove(KEY_NULL));
+    	// test: modify
+    	assertEquals("remove value with key \"" + KEY_NULL + "\" equals \"" + VALUE_NULL + "\"", VALUE_NULL, trieMap.remove(KEY_NULL));
+    	assertNull("remove value with key \"" + KEY_NULL + "\" is null", trieMap.remove(KEY_NULL));
     	trieMap.put(KEY_NULL, VALUE_NULL);
-		seed = System.currentTimeMillis();
+    	assertEquals("put new value with key \"" + KEY_BLANK + "\". Old value equals \"" + VALUE_NULL + "\"", VALUE_NULL, trieMap.put(KEY_BLANK, VALUE_BLANK));
+    	assertEquals("put new value with key \"" + KEY_NULL + "\". Old value equals \"" + VALUE_BLANK + "\"", VALUE_BLANK, trieMap.put(KEY_NULL, VALUE_NULL));
+
+    	// test: random remove
+    	seed = System.currentTimeMillis();
     	random = new Random(seed);
     	int index = random.nextInt(KEYS.length);
     	assertEquals("remove value with key \"" + KEYS[index]+ "\" equals \"" + VALUES[index] + "\"", VALUES[index], trieMap.remove(KEYS[index]));
@@ -203,6 +209,8 @@ public class TrieMapTest extends TestCase
     	assertFalse("does not contains key \"" + VALUES[index] + "\"", trieMap.containsValue(VALUES[index]));
     	assertEquals("size == " + (KEYS.length - 1), KEYS.length - 1, trieMap.size());
     	trieMap.put(KEYS[index], VALUES[index]);
+
+    	// test: iterator remove
     	iteratorRemoveTest(trieMap, trieMap.entrySet().iterator(), KEYS, VALUES);
     	iteratorRemoveTest(trieMap, trieMap.keySet().iterator(), KEYS, VALUES);
     	iteratorRemoveTest(trieMap, trieMap.values().iterator(), KEYS, VALUES);
@@ -296,35 +304,33 @@ public class TrieMapTest extends TestCase
     
     public void testPerformance() throws IOException {
     	System.out.println("\nPerformance test");
-		System.out.println("reading test data...");
-    	Properties testDataRandom = new Properties();
-    	testDataRandom.load(getClass().getResourceAsStream(FILE_TESTDATA_RANDOM));
-    	Properties testDataDict = new Properties();
-    	testDataDict.load(getClass().getResourceAsStream(FILE_TESTDATA_DICT));
-    	
     	System.out.println("running performance test...");
-    	System.out.println("\nRandom data:");
-    	runTests(testDataRandom, 1);
     	System.out.println("\nDictionary data:");
-    	runTests(testDataDict, TEST_RUNS);
+    	Properties testData = new Properties();
+    	testData.load(getClass().getResourceAsStream(FILE_TESTDATA_DICT));
+    	runTests(testData, TEST_RUNS);
+    	testData.clear();
+    	System.out.println("\nRandom data:");
+    	testData.load(getClass().getResourceAsStream(FILE_TESTDATA_RANDOM));
+    	runTests(testData, TEST_RUNS);
     }
     
     private void runTests(Properties testData, int runs) {
-    	Map<String, String> hashMap = new HashMap<String, String>();
-    	Map<String, String> treeMap = new TreeMap<String, String>();
-    	Map<String, String> trieMap = new TrieMap<String, String>();
+    	Map<String, String> map1 = new TrieMap<String, String>();
+    	Map<String, String> map2 = new HashMap<String, String>();
+    	Map<String, String> map3 = new TreeMap<String, String>();
     	
     	Map<Long, String> testResults = new TreeMap<Long, String>();
-    	runPutTest(testResults, hashMap, testData, runs);
-    	runPutTest(testResults, treeMap, testData, runs);
-    	runPutTest(testResults, trieMap, testData, runs);
+    	runPutTest(testResults, map1, testData, runs);
+    	runPutTest(testResults, map2, testData, runs);
+    	runPutTest(testResults, map3, testData, runs);
     	System.out.println("put operation: ");
     	printResults(testResults);
     	
     	testResults.clear();
-    	runGetTest(testResults, hashMap, testData, runs);
-    	runGetTest(testResults, treeMap, testData, runs);
-    	runGetTest(testResults, trieMap, testData, runs);
+    	runGetTest(testResults, map1, testData, runs);
+    	runGetTest(testResults, map2, testData, runs);
+    	runGetTest(testResults, map3, testData, runs);
     	System.out.println("get operation: ");
     	printResults(testResults);
     }
