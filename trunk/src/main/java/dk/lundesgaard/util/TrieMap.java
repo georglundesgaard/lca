@@ -28,25 +28,30 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
 
+import com.sun.corba.se.spi.legacy.connection.GetEndPointInfoAgainException;
+
 public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Serializable {
 	private static final long serialVersionUID = 1L;
 	private static final String EMPTY_STRING = "";
 	
-	private transient Entry<K, V> root = null;
+	private transient Node root = new Node((char) 0, null, null, null, null);
 	private transient int size;
 	private transient int modCount;
-
+	private transient Set<Entry<K, V>> entrySet;
+	private transient Set<K> keySet;
+	private transient Collection<V> values;
+	
 	@Override
 	public void clear() {
-		root = null;
+		root.clear();
 		size = 0;
 		modCount = 0;
 	}
 
 	@Override
 	public boolean containsKey(Object key) {
-		Entry<K,V> entry = getEntry(root, objectToString(key), 0);
-		return entry != null && entry.isEntry();
+		Node node = getNode(key);
+		return node != null && node.hasEntry();
 	}
 
 	@Override
@@ -65,36 +70,53 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
 	}
 
 	@Override
-	public Set<Map.Entry<K, V>> entrySet() {
-		return new EntrySet();
+	public Set<Entry<K, V>> entrySet() {
+		Set<Entry<K, V>> es = entrySet;
+		return es != null ? es : (entrySet = new EntrySet());
 	}
 	
 	public V get(Object key) {
-		Entry<K, V> entry = getEntry(key);
-		if (entry != null) {
-			return entry.getValue();
+		Node node = getNode(key);
+		if (node != null && node.hasEntry()) {
+			return node.entry.getValue();
 		}
 		return null;
 	}
 
 	public Set<K> keySet() {
-		return new KeySet();
+		Set<K> ks = keySet;
+		return ks != null ? ks : (keySet = new KeySet());
 	}
 	
 	public V put(K key, V value) {
+		if (key == null) {
+			return createEntry(root, key, value);
+		}
 		String keyString = objectToString(key);
-		return put(keyString, key, value);
+		if (keyString == null) {
+			return createEntry(root, key, value);
+		}
+		if (root.firstChild == null) {
+			Node node = createNodePath(root, keyString, 0);
+			createEntry(node, key, value);
+			return null;
+		}
+		return put(root.firstChild, keyString, 0, key, value);
 	}
 
 	public V remove(Object key) {
-		String keyString = objectToString(key);
-		if (keyString.length() == 0) {
-			if (root != null && root.keyPart == (char) 0) {
-				return removeEntry(root);
-			}
-			return null;
+		if (key == null) {
+			return removeEntry(root);
 		}
-		return removeEntry(root, keyString, 0);
+		String keyString = objectToString(key);
+		if (keyString == null) {
+			return removeEntry(root);
+		}
+		Node node = getNode(root.firstChild, keyString, 0);
+		if (node != null && node.hasEntry()) {
+			return removeEntry(node);
+		}
+		return null;
 	}
 
 	public int size() {
@@ -102,242 +124,209 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
 	}
 
 	public Collection<V> values() {
-		return new Values();
+		Collection<V> v = values;
+		return v != null ? v : (values = new Values());
 	}
 	
-	private Entry<K, V> getEntry(Object key) {
-		if (root == null) {
-			return null;
-		}
-		String keyString = objectToString(key);
-		if (keyString.length() == 0) {
-			if (root.keyPart != (char) 0) {
-				return null;
-			}
+	private Node getNode(Object key) {
+		if (key == null) {
 			return root;
 		}
-		return getEntry(root, keyString, 0);
+		String keyString = objectToString(key);
+		if (keyString == null) {
+			return root;
+		}
+		return getNode(root.firstChild, keyString, 0);
 	}
 	
-	private Entry<K, V> getEntry(Entry<K, V> current, String keyString, int offset) {
-		if (current == null || keyString.charAt(offset) < current.keyPart) {
+	private Node getNode(Node current, String keyString, int position) {
+		if (current == null || keyString.charAt(position) < current.keyPart) {
 			return null;
 		}
-		
-		if (keyString.charAt(offset) > current.keyPart) {
-			return getEntry(current.nextSibling, keyString, offset);
+		if (keyString.charAt(position) > current.keyPart) {
+			return getNode(current.nextSibling, keyString, position);
 		}
-		if (offset == keyString.length() - 1) {
+		if (position + 1 == keyString.length()) {
 			return current;
 		}
-		return getEntry(current.firstChild, keyString, offset + 1);
+		return getNode(current.firstChild, keyString, position + 1);
 	}
 	
-	private V put(String keyString, K key, V value) {
-		if (keyString.length() == 0) {
-			if (root == null) {
-				root = createEntry((char) 0, null, null, null, key, value);
-			}
-			if (root.keyPart == (char) 0) {
-				root = createEntry((char) 0, root.nextSibling, root.firstChild, null, key, value);
-			}
-			else {
-				root = createEntry((char) 0, root, null, null, key, value); 
-			}
-		}
-		if (root == null) {
-			root = createEntryPath(keyString, 0, key, value);
-		}
-		return put(root, keyString, 0, key, value);
-	}
-	
-	private V put(Entry<K, V> current, String keyString, int offset, K key, V value) {
-		char keyPart = keyString.charAt(offset);
+	private V put(Node current, String keyString, int position, K key, V value) {
+		char keyPart = keyString.charAt(position);
 		if (keyPart < current.keyPart || keyPart > current.keyPart) {
 			if (keyPart < current.keyPart) {
-				Entry<K, V> entry = createEntryPath(keyString, offset, key, value);
-				entry.nextSibling = current;
-				current.previous = entry;
+				Node previous = current.previous;
+				Node node = new Node(keyString.charAt(position), current, null, previous, null);
+				if (previous.firstChild == current) {
+					previous.firstChild = node;
+				}
+				else {
+					previous.nextSibling = node;
+				}
+				current.previous = node;
+				if (position + 1 < keyString.length()) {
+					node = createNodePath(current.previous, keyString, position + 1);
+				}
+				createEntry(node, key, value);
+				return null;
 			}
 			else if (current.nextSibling == null) {
-				Entry<K, V> entry = createEntryPath(keyString, offset, key, value);
-				entry.previous = current;
-				current.nextSibling = entry;
+				Node node = new Node(keyString.charAt(position), null, null, current, null);
+				if (position + 1 < keyString.length()) {
+					node = createNodePath(current.previous, keyString, position + 1);
+				}
+				createEntry(node, key, value);
+				return null;
 			}
 			else {
-				return put(current.nextSibling, keyString, offset, key, value);
+				return put(current.nextSibling, keyString, position, key, value);
 			}
-			return null;
 		}
 
-		if (offset == keyString.length() - 1) {
-			V oldValue = current.getValue();
-			createEntry(current, key, value);
-			return oldValue;
+		if (position + 1 == keyString.length()) {
+			return createEntry(current, key, value);
 		}
 		if (current.firstChild == null) {
-			Entry<K, V> entry = createEntryPath(keyString, offset + 1, key, value);
-			current.firstChild = entry;
-			entry.previous = current;
-			return null;
+			Node node = createNodePath(current, keyString, position + 1);
+			return createEntry(node, key, value);
 		}
-		return put(current.firstChild, keyString, offset + 1, key, value);
+		return put(current.firstChild, keyString, position + 1, key, value);
 	}
 	
-	private Entry<K, V> createEntryPath(String keyString, int offset, K key, V value) {
-		Entry<K, V> root = new Entry<K, V>(keyString.charAt(offset), null, null, null, null, null);
-		Entry<K, V> current = root;
-		for (int i = offset + 1; i < keyString.length() - 1; i++) {
-			Entry<K, V> previous = current;
-			current = new Entry<K, V>(keyString.charAt(i), null, null, previous, null, null);
-			previous.firstChild = current;
+	private Node createNodePath(Node previous, String keyString, int position) {
+		Node node = new Node(keyString.charAt(position), null, null, previous, null);
+		previous.firstChild = node;
+		for (int i = position + 1; i < keyString.length(); i++) {
+			previous = node;
+			node = new Node(keyString.charAt(position), null, null, previous, null);
+			previous.firstChild = node;
 		}
-		Entry<K, V> previous = current;
-		current = createEntry(keyString.charAt(keyString.length() - 1), null, null, previous, key, value);
-		previous.firstChild = current;
-		return root;
+		return node;
 	}
 	
-	private Entry<K, V> createEntry(char keyPart, Entry<K, V> nextSibling, Entry<K, V> firstChild, Entry<K, V> previous, K key, V value) {
-		Entry<K, V> entry = new Entry<K, V>(keyPart, nextSibling, firstChild, previous, key, value);
-		if (nextSibling != null) {
-			nextSibling.previous = entry;
+	private V createEntry(Node current, K key, V value) {
+		Entry<K, V> oldEntry = current.entry;
+		current.entry = new SimpleEntry<K, V>(key, value);
+		modCount++;
+		if (oldEntry != null) {
+			return oldEntry.getValue();
 		}
-		if (firstChild != null) {
-			firstChild.previous = entry;
-		}
-		if (key != null) {
-			size++;
-		}
-		return entry;
+		size++;
+		return null;
 	}
 	
-	private Entry<K, V> createEntry(Entry<K, V> oldEntry) {
-		return createEntry(oldEntry, null, null);
+	private V removeEntry(Node current) {
+		Entry<K, V> oldEntry = current.entry;
+		current.entry = null;
+		removeNode(current);
+		size--;
+		modCount++;
+		if (oldEntry != null) {
+			return oldEntry.getValue();
+		}
+		return null;
 	}
 	
-	private Entry<K, V> createEntry(Entry<K, V> oldEntry, K key, V value) {
-		return new Entry<K, V>(oldEntry.keyPart, oldEntry.nextSibling, oldEntry.firstChild, oldEntry.previous, null, null);
-	}
-	
-	private Entry<K, V> clearEntry(Entry<K, V> entry) {
-		if (entry.firstChild != null || entry.nextSibling != null) { 
-			return createEntry(entry);
-		}
-		else {
-			return null;
-		}
-	}
-	
-	private V removeEntry(Entry<K, V> current, String keyString, int offset) {
-		if (current == null) {
-			return null;
-		}
-		
-		if (keyString.charAt(offset) < current.keyPart) {
-			return null;
-		}
-		
-		if (keyString.charAt(offset) > current.keyPart) {
-			return removeEntry(current.nextSibling, keyString, offset);
-		}
-		
-		if (offset + 1 == keyString.length()) {
-			if (current.isEntry()) {
-				return removeEntry(current);
+	private void removeNode(Node current) {
+		if (current.hasChildren() == false) {
+			Node previous = current.previous;
+			if (previous == null) {
+				// root node is not deleted
+				return;
 			}
-			return null;
+
+			// move references
+			if (previous.firstChild == current) {
+				previous.firstChild = current.nextSibling;
+			}
+			else {
+				previous.nextSibling = current.nextSibling;
+			}
+			
+			if (current.hasSiblings()) {
+				// current node is removed for sibling list
+				current.nextSibling.previous = previous;
+				return;
+			}
+			
+			if (previous.hasEntry() == false) {
+				// continue node removal when previous node has no entry
+				removeNode(previous);
+			}
 		}
-		
-		return removeEntry(current.firstChild, keyString, offset + 1);
-	}
-	
-	private V removeEntry(Entry<K, V> entry) {
-		Entry<K, V> previous = entry.previous;
-		if (previous == null) {
-			this.root = clearEntry(entry);
-		}
-		else if (previous.firstChild == entry) {
-			previous.firstChild = createEntry(entry);
-		}
-		else {
-			previous.nextSibling = createEntry(entry);
-		}
-		this.modCount++;
-		this.size--;
-		return entry.getValue();
 	}
 	
 	private String objectToString(Object o) {
-		if (o == null) {
-			return EMPTY_STRING;
-		}
 		String s = o.toString();
 		if (s.length() == 0) {
-			return EMPTY_STRING;
+			return null;
 		}
 		return s;
 	}
 	
-	private Entry<K, V> getFirstEntry(Deque<Entry<K, V>> nextSiblingStack) {
-		return getNextEntry(root, nextSiblingStack, false);
+	private Node getFirstEntryNode() {
+		return getNextEntryNode(root, true);
 	}
 	
-	private Entry<K, V> getNextEntry(Entry<K, V> current, Deque<Entry<K, V>> nextSiblingStack, boolean ignoreCurrent) {
-		if (current == null) {
-			return null;
-		}
-		if (current.isEntry() && ignoreCurrent == false) {
+	private Node getNextEntryNode(Node current, boolean includeCurrent) {
+		if (current.hasEntry() && includeCurrent) {
 			return current;
 		}
-		if (current.firstChild != null) {
-			if (current.nextSibling != null) {
-				nextSiblingStack.push(current.nextSibling);
-			}
-			return getNextEntry(current.firstChild, nextSiblingStack, false);
+		if (current.hasChildren()) {
+			return getNextEntryNode(current.firstChild, true);
 		}
-		if (current.nextSibling != null) {
-			return getNextEntry(current.nextSibling, nextSiblingStack, false);
+		if (current.hasSiblings()) {
+			return getNextEntryNode(current.nextSibling, true);
 		}
-		if (nextSiblingStack.isEmpty()) {
-			return null;
-		}
-		return getNextEntry(nextSiblingStack.pop(), nextSiblingStack, false);
+		return null;
 	}
-
-	private static class Entry<K, V> extends AbstractMap.SimpleEntry<K, V> implements Map.Entry<K, V>, Serializable {
+	
+	private class Node implements Serializable {
 		private static final long serialVersionUID = 1L;
 		
 		char keyPart;
-		Entry<K, V> nextSibling;
-		Entry<K, V> firstChild;
-		Entry<K, V> previous;
+		Node nextSibling;
+		Node firstChild;
+		Node previous;
+		Entry<K, V> entry;
 		
-		public Entry(char keyPart, Entry<K, V> nextSibling, Entry<K, V> firstChild, Entry<K, V> previous, K key, V value) {
-			super(key, value);
+		Node(char keyPart, Node nextSibling, Node firstChild, Node previous, Entry<K, V> entry) {
 			this.keyPart = keyPart;
 			this.nextSibling = nextSibling;
 			this.firstChild = firstChild;
 			this.previous = previous;
+			this.entry = entry;
 		}
 		
-		public boolean isEntry() {
-			return getKey() != null;
+		boolean hasEntry() {
+			return entry != null;
 		}
 		
-		public String toString() {
-			return keyPart + ", " + super.toString(); 
+		boolean hasChildren() {
+			return firstChild != null;
+		}
+		
+		boolean hasSiblings() {
+			return nextSibling != null;
+		}
+		
+		void clear() {
+			// TODO: recursive clear?
+			nextSibling = null;
+			firstChild = null;
+			previous = null;
+			entry = null;
 		}
 	}
 	
 	private abstract class AbstractEntryIterator<T> implements Iterator<T> {
-		private Entry<K, V> next;
-		private Entry<K, V> lastReturned;
+		private Node next;
+		private Node lastReturned;
 		private int expectedModCount;
-		private Deque<Entry<K, V>> nextSiblingStack = new ArrayDeque<Entry<K, V>>();
 		
 		public AbstractEntryIterator() {
-			next = getFirstEntry(nextSiblingStack);
+			next = getFirstEntryNode();
 			lastReturned = null;
 			expectedModCount = modCount;
 		}
@@ -347,15 +336,15 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
 		}
 		
 		protected Entry<K, V> nextEntry() {
-			Entry<K, V> entry = lastReturned = next;
-			if (entry == null) {
+			Node current = lastReturned = next;
+			if (current == null) {
 				throw new NoSuchElementException();
 			}
 			if (modCount != expectedModCount) {
 				throw new ConcurrentModificationException();
 			}
-			next = getNextEntry(entry, nextSiblingStack, true);
-			return entry;
+			next = getNextEntryNode(current, false);
+			return current.entry;
 		}
 		
 		public void remove() {
@@ -371,8 +360,8 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
 		}
 	}
 	
-	private class EntryIterator extends AbstractEntryIterator<Map.Entry<K, V>> {
-		public Map.Entry<K, V> next() {
+	private class EntryIterator extends AbstractEntryIterator<Entry<K, V>> {
+		public Entry<K, V> next() {
 			return nextEntry();
 		}
 	}
@@ -389,9 +378,9 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
 		}
 	}
 	
-	private class EntrySet extends AbstractSet<Map.Entry<K, V>>{
+	private class EntrySet extends AbstractSet<Entry<K, V>>{
 		@Override
-		public Iterator<Map.Entry<K, V>> iterator() {
+		public Iterator<Entry<K, V>> iterator() {
 			return new EntryIterator();
 		}
 		
@@ -402,28 +391,28 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
 		
 		@Override
 		public boolean contains(Object o) {
-			if (o == null || o instanceof Map.Entry == false) {
+			if (o == null || o instanceof Entry == false) {
 				return false;
 			}
-			Map.Entry otherEntry = (Map.Entry) o;
-			Entry entry = getEntry(otherEntry.getKey());
-			if (entry == null) {
+			Entry otherEntry = (Entry) o;
+			Node node = getNode(otherEntry.getKey());
+			if (node == null || node.hasEntry() == false) {
 				return false;
 			}
-			return entry.equals(otherEntry);
+			return node.entry.equals(otherEntry);
 		}
 		
 		@Override
 		public boolean remove(Object o) {
-			if (o == null || o instanceof Map.Entry == false) {
+			if (o == null || o instanceof Entry == false) {
 				return false;
 			}
-			Map.Entry otherEntry = (Map.Entry) o;
-			Entry<K, V> entry = getEntry(otherEntry.getKey());
-			if (entry == null) {
+			Entry otherEntry = (Entry) o;
+			Node node = getNode(otherEntry.getKey());
+			if (node == null || node.hasEntry() == false) {
 				return false;
 			}
-			removeEntry(entry);
+			removeEntry(node);
 			return true;
 		}
 		
@@ -451,9 +440,12 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
 		
 		@Override
 		public boolean remove(Object o) {
-			Entry<K, V> entry = getEntry(o);
-			removeEntry(entry);
-			return entry.isEntry();
+			Node node = getNode(o);
+			if (node == null || node.hasEntry() == false) {
+				return false;
+			}
+			removeEntry(node);
+			return true;
 		}
 		
 		@Override
@@ -476,11 +468,11 @@ public class TrieMap<K, V> extends AbstractMap<K, V> implements Map<K, V>, Seria
         }
 
         public boolean remove(Object o) {
-        	Deque<Entry<K, V>> nextSiblingStack = new ArrayDeque<Entry<K,V>>();
-            for (Entry<K,V> e = getFirstEntry(nextSiblingStack); e != null; e = getNextEntry(e, nextSiblingStack, true)) {
-            	V value = e.getValue();
+        	for (Node node = getFirstEntryNode(); node != null; node = getNextEntryNode(node, false)) {
+        		Entry<K, V> entry = node.entry;
+            	V value = entry.getValue();
             	if (value == null && o == null || value != null && value.equals(o)) {
-            		removeEntry(e);
+            		removeEntry(node);
             		return true;
             	}
             }
