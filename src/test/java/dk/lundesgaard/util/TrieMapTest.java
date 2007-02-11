@@ -38,18 +38,22 @@ import junit.framework.TestSuite;
 /**
  * Unit test for trie map.
  */
-public class TrieMapTest 
-    extends TestCase
+public class TrieMapTest extends TestCase
 {
 	// test data
-	private static final String KEY_01 = "foo";
-	private static final String KEY_02 = "bar";
+	private static final String KEY_01 = "bar";
+	private static final String KEY_02 = "foo";
 	private static final String KEY_03 = "zot";
-	private static final String VALUE_01 = "FOO";
-	private static final String VALUE_02 = "BAR";
+	private static final String KEY_UNKNOWN = "trie";
+	private static final String KEY_NULL = null;
+	private static final String VALUE_01 = "BAR";
+	private static final String VALUE_02 = "FOO";
 	private static final String VALUE_03 = "ZOT";
-	private static final String UNKNOWN_KEY = "trie";
-	private static final String UNKNOWN_VALUE = "TRIE";
+	private static final String VALUE_UNKNOWN = "TRIE";
+	private static final String VALUE_NULL = "NULL";
+	
+	private static final String[] KEYS = { KEY_NULL, KEY_01, KEY_02, KEY_03 };
+	private static final String[] VALUES = { VALUE_NULL, VALUE_01, VALUE_02, VALUE_03 };
 	
 	// performance test data
 	private static final String FILE_TESTDATA = "testdata.properties";
@@ -163,74 +167,45 @@ public class TrieMapTest
     	emptyMapTests(trieMap);
     	
     	// put values and test emptiness, size, entry set size, key set size and values size
-    	trieMap.put(KEY_01, VALUE_01);
-    	assertFalse("is empty", trieMap.isEmpty());
-    	assertFalse("size == 0", trieMap.size() == 0);
-    	trieMap.put(KEY_02, VALUE_02);
-    	trieMap.put(KEY_03, VALUE_03);
-    	assertEquals("size == 3", 3, trieMap.size());
-    	assertEquals("3 entries", 3, trieMap.entrySet().size());
-    	assertEquals("3 keys", 3, trieMap.keySet().size());
-    	assertEquals("3 values", 3, trieMap.values().size());
+    	putTests(trieMap, KEYS, VALUES);
     	
     	// test contains
-    	assertTrue("contains key KEY_01", trieMap.containsKey(KEY_01));
-    	assertTrue("contains key KEY_02", trieMap.containsKey(KEY_02));
-    	assertTrue("contains key KEY_03", trieMap.containsKey(KEY_03));
-    	assertFalse("does not contain key UNKNOWN_KEY", trieMap.containsKey(UNKNOWN_KEY));
-    	assertTrue("contains value VALUE_01", trieMap.containsValue(VALUE_01));
-    	assertTrue("contains value VALUE_02", trieMap.containsValue(VALUE_02));
-    	assertTrue("contains value VALUE_03", trieMap.containsValue(VALUE_03));
-    	assertFalse("does not contain value UNKNOWN_VALUE", trieMap.containsKey(UNKNOWN_VALUE));
+    	containsTests(trieMap, KEYS, VALUES);
+    	assertFalse("does not contain key: " + KEY_UNKNOWN, trieMap.containsKey(KEY_UNKNOWN));
+    	assertFalse("does not contain value: " + VALUE_UNKNOWN, trieMap.containsKey(VALUE_UNKNOWN));
     	
     	// test: entry set
-    	Set entries = trieMap.entrySet();
-    	assertNotNull("valid entry set", entries);
-    	Iterator iter = entries.iterator();
-		Map.Entry entry = (Map.Entry) iter.next();
-		assertEquals("first entry's key equals KEY_01", KEY_01, entry.getKey());
-		assertEquals("first entry's value equals VALUE_01", VALUE_01, entry.getValue());
-		entry = (Map.Entry) iter.next();
-		assertEquals("second entry's key equals KEY_02", KEY_02, entry.getKey());
-		assertEquals("second entry's value equals VALUE_02", VALUE_02, entry.getValue());
-		entry = (Map.Entry) iter.next();
-		assertEquals("third entry's key equals KEY_03", KEY_03, entry.getKey());
-		assertEquals("third entry's value equals VALUE_03", VALUE_03, entry.getValue());
-		
+    	entrySetTest(trieMap, KEYS, VALUES);
+    	assertEquals(KEYS.length + " entries", KEYS.length, trieMap.entrySet().size());
+
 		// test: key set
-    	Set keys = trieMap.keySet();
-    	assertNotNull("valid key set", keys);
-    	iter = keys.iterator();
-		Object key = iter.next();
-		assertEquals("first key is KEY_01", KEY_01, key);
-		key = iter.next();
-		assertEquals("second key is KEY_02", KEY_02, key);
-		key = iter.next();
-		assertEquals("third key is KEY_03", KEY_03, key);
+    	keySetTest(trieMap, KEYS);
+    	assertEquals(KEYS.length + " keys", KEYS.length, trieMap.keySet().size());
     	
     	// test: values
-    	Collection<String> values = trieMap.values();
-    	assertNotNull("valid values", values);
-    	Iterator<String> valueIterator = values.iterator();
-    	String value = valueIterator.next();
-		assertEquals("first value is VALUE_01", VALUE_01, value);
-    	value = valueIterator.next();
-		assertEquals("second value is VALUE_02", VALUE_02, value);
-    	value = valueIterator.next();
-		assertEquals("third value is VALUE_03", VALUE_03, value);
+    	valuesTest(trieMap, VALUES);
+    	assertEquals(KEYS.length + " values", KEYS.length, trieMap.values().size());
 		
     	// test: get
-    	assertEquals("get value with key KEY_01 equals VALUE_01", VALUE_01, trieMap.get(KEY_01));
-    	assertEquals("get value with key KEY_02 equals VALUE_02", VALUE_02, trieMap.get(KEY_02));
-    	assertEquals("get value with key KEY_03 equals VALUE_03", VALUE_03, trieMap.get(KEY_03));
-    	assertNull("get value with key UNKNOWN_KEY is null", trieMap.get(UNKNOWN_KEY));
+    	getTests(trieMap, KEYS, VALUES);
+    	assertNull("get value with unknown key is null", trieMap.get(KEY_UNKNOWN));
     	
     	// test: remove
-    	assertEquals("remove value with key KEY_01 equals VALUE_01", VALUE_01, trieMap.remove(KEY_01));
-    	assertNull("remove value with key KEY_01 is null", trieMap.remove(KEY_01));
-    	assertFalse("does not contains key KEY_01", trieMap.containsKey(KEY_01));
-    	assertFalse("does not contains key VALUE_01", trieMap.containsValue(VALUE_01));
-    	assertEquals("size == 2", 2, trieMap.size());
+    	assertEquals("remove value with key \"" + KEY_NULL+ "\" equals \"" + VALUE_NULL + "\"", VALUE_NULL, trieMap.remove(KEY_NULL));
+    	assertNull("remove value with key \"" + KEY_NULL+ "\" is null", trieMap.remove(KEY_NULL));
+    	trieMap.put(KEY_NULL, VALUE_NULL);
+		seed = System.currentTimeMillis();
+    	random = new Random(seed);
+    	int index = random.nextInt(KEYS.length);
+    	assertEquals("remove value with key \"" + KEYS[index]+ "\" equals \"" + VALUES[index] + "\"", VALUES[index], trieMap.remove(KEYS[index]));
+    	assertNull("remove value with key \"" + KEYS[index]+ "\" is null", trieMap.remove(KEYS[index]));
+    	assertFalse("does not contains key \"" + KEYS[index]+ "\"", trieMap.containsKey(KEYS[index]));
+    	assertFalse("does not contains key \"" + VALUES[index] + "\"", trieMap.containsValue(VALUES[index]));
+    	assertEquals("size == " + (KEYS.length - 1), KEYS.length - 1, trieMap.size());
+    	trieMap.put(KEYS[index], VALUES[index]);
+    	iteratorRemoveTest(trieMap, trieMap.entrySet().iterator(), KEYS, VALUES);
+    	iteratorRemoveTest(trieMap, trieMap.keySet().iterator(), KEYS, VALUES);
+    	iteratorRemoveTest(trieMap, trieMap.values().iterator(), KEYS, VALUES);
     	
     	// test: clear
     	trieMap.clear();
@@ -250,6 +225,73 @@ public class TrieMapTest
     	assertFalse("does not contain value VALUE_01", trieMap.containsValue(VALUE_01));
     	assertNull("get with key KEY_01 is null", trieMap.get(KEY_01));
     	assertNull("remove with key KEY_01 is null", trieMap.remove(KEY_01));
+    }
+    
+    private void putTests(TrieMap<String, String> trieMap, String[] keys, String[] values) {
+    	for (int i = 0; i < keys.length; i++) {
+        	trieMap.put(keys[i], values[i]);
+        	if (i == 0) {
+        		assertFalse("is empty", trieMap.isEmpty());
+        	}
+        	assertEquals("size == " + (i + 1), i + 1, trieMap.size());
+		}
+    }
+    
+    private void containsTests(TrieMap<String, String> trieMap, String[] keys, String[] values) {
+    	for (int i = 0; i < keys.length; i++) {
+        	assertTrue("contains key: " + keys[i], trieMap.containsKey(keys[i]));
+        	assertTrue("contains value: " + values[i], trieMap.containsValue(values[i]));
+    	}
+    }
+    
+    private void entrySetTest(TrieMap<String, String> trieMap, String[] keys, String[] values) {
+    	Set<Map.Entry<String, String>> entrySet = trieMap.entrySet();
+    	assertNotNull("valid entry set", entrySet);
+    	Iterator<Map.Entry<String, String>> entryIterator = entrySet.iterator();
+		for (int i = 0; i < keys.length; i++) {
+    		Map.Entry entry = entryIterator.next();
+    		assertEquals((i + 1) + ". entry's key equals \"" + keys[i] + "\"", keys[i], entry.getKey());
+    		assertEquals((i + 1) + ". entry's value equals \"" + values[i] + "\"", values[i], entry.getValue());
+		}
+    }
+    
+    private void keySetTest(TrieMap<String, String> trieMap, String[] keys) {
+    	Set<String> keySet = trieMap.keySet();
+    	assertNotNull("valid key set", keySet);
+    	Iterator<String> keyIterator = keySet.iterator();
+		for (int i = 0; i < keys.length; i++) {
+    		String key = keyIterator.next();
+    		assertEquals((i + 1) + ". key equals \"" + keys[i] + "\"", keys[i], key);
+		}
+    }
+    
+    private void valuesTest(TrieMap<String, String> trieMap, String[] values) {
+    	Collection<String> valueCollection = trieMap.values();
+    	assertNotNull("valid value collection", values);
+    	Iterator<String> valueIterator = valueCollection.iterator();
+		for (int i = 0; i < values.length; i++) {
+    		String value = valueIterator.next();
+    		assertEquals((i + 1) + ". value equals \"" + values[i] + "\"", values[i], value);
+		}
+    }
+    
+    private void getTests(TrieMap<String, String> trieMap, String[] keys, String[] values) {
+    	for (int i = 0; i < keys.length; i++) {
+        	assertEquals("get value with key \"" + keys[i] + "\" equals \"" + values[i] + "\"", values[i], trieMap.get(keys[i]));
+		}
+    }
+    
+    private void iteratorRemoveTest(TrieMap<String, String> trieMap, Iterator iterator, String[] keys, String[] values) {
+    	int index = random.nextInt(keys.length);
+    	for (int i = 0; iterator.hasNext(); i++) {
+    		iterator.next();
+    		if (i == index) {
+    			iterator.remove();
+    		}
+    	}
+    	assertEquals("size == " + (keys.length - 1), (keys.length - 1), trieMap.size());
+    	assertFalse("does not contain key \"" + keys[index] + "\"", trieMap.containsKey(keys[index]));
+    	trieMap.put(keys[index], values[index]);
     }
     
     public void testPerformance() throws IOException {
