@@ -1,5 +1,5 @@
-   Lundesgaard Collections API (http://lundesgaard.dk/lca)
-   Copyright 2007 Georg Lundesgaard (georg@lundesgaard.dk)
+   Lundesgaard Collections API (http://github.com/georglundesgaard/lca)
+   Copyright 2007-2014 Georg Lundesgaard (georg@lundesgaard.no)
 
    Collections API extending the Java Collections API. Currently it is 
    providing a trie map (a java.util.Map implementation) using the algorithm 
@@ -9,5 +9,5 @@
    
    License: Apache License Version 2.0
 
-   See LICENCE file for the project license and the NOTICE file for any copyright
-   notices
+   See LICENCE file for the project license and the NOTICE file for any 
+   copyright notices
