@@ -4,57 +4,82 @@ import java.util.AbstractMap;
 import java.util.AbstractSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
-import no.lundesgaard.util.trie.Node;
-import no.lundesgaard.util.trie.Root;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
-public class TrieMap<K, P, V> extends AbstractMap<K, V> {
-	private Root<K, P, V> root = new Root<>();
+public class TrieMap<K, V> extends AbstractMap<K, V> {
+	private TrieNode<K, V> rootNode = new TrieNode<>();
 
-	@Override
-	public int size() {
-		return root.size();
+	public TrieMap() {
 	}
 
-	@Override
-	public boolean isEmpty() {
-		return root.isEmpty();
+	public TrieMap(Map<K, V> map) {
+		putAll(map);
 	}
 
-	@Override
 	public boolean containsKey(Object key) {
-		return root.containsKey(key);
+		return findNode(key).map(TrieNode::hasEntry).orElse(false);
 	}
 
-	@Override
 	public boolean containsValue(Object value) {
-		return root.containsValue(value);
+		return rootNode.containsValue(value);
 	}
 
-	@Override
 	public V get(Object key) {
-		return root.get(key);
+		return findNode(key)
+				.flatMap(TrieNode::getOptionalEntry)
+				.filter(e -> e.getKey() == null && key == null || e.getKey() != null && e.getKey().equals(key))
+				.map(Entry::getValue)
+				.orElse(null);
 	}
 
-	@Override
+	private Optional<TrieNode<K, V>> findNode(Object key) {
+		return rootNode.findNode(partialKeysFromKey(key));
+	}
+
+	private byte[] partialKeysFromKey(Object key) {
+		if (key == null) {
+			return null;
+		}
+		if (key instanceof Trieable) {
+			return ((Trieable) key).getBytes();
+		}
+		return key.toString().getBytes(UTF_8);
+	}
+
 	public V put(K key, V value) {
-		return root.put(key, value);
+		TrieNode<K, V> node = findOrCreateNodes(key).get();
+		return node.setEntry(key, value).map(Entry::getValue).orElse(null);
+	}
+
+	private Optional<TrieNode<K, V>> findOrCreateNodes(K key) {
+		return rootNode.findOrCreateNodes(partialKeysFromKey(key));
 	}
 
 	@Override
+	public void putAll(Map<? extends K, ? extends V> map) {
+		map.forEach(this::put);
+	}
+
 	public V remove(Object key) {
-		return root.remove(key);
+		return findNode(key)
+				.flatMap(TrieNode::removeEntry)
+				.map(Entry::getValue)
+				.orElse(null);
 	}
 
-	@Override
-	public void putAll(Map<? extends K, ? extends V> m) {
-		m.forEach(root::put);
+	public int size() {
+		return rootNode.size();
 	}
 
-	@Override
+	public boolean isEmpty() {
+		return rootNode.isEmpty();
+	}
+
 	public void clear() {
-		root.clear();
+		rootNode.clear();
 	}
 
 	@Override
@@ -63,10 +88,8 @@ public class TrieMap<K, P, V> extends AbstractMap<K, V> {
 			@Override
 			public Iterator<Entry<K, V>> iterator() {
 				return new Iterator<Entry<K, V>>() {
-					Iterator<Node<K, V>> iterator = root.stream()
-							.filter(Node::hasValue)
-							.iterator();
-					Node<K, V> currentNode;
+					Iterator<TrieNode<K, V>> iterator = rootNode.nodeWithEntryIterator();
+					TrieNode<K, V> currentNode;
 
 					@Override
 					public boolean hasNext() {
@@ -76,25 +99,25 @@ public class TrieMap<K, P, V> extends AbstractMap<K, V> {
 					@Override
 					public Entry<K, V> next() {
 						currentNode = iterator.next();
-						return currentNode;
+						return currentNode.getOptionalEntry().get();
 					}
 
 					@Override
 					public void remove() {
-						if (currentNode == null) {
+						if (currentNode != null) {
+							currentNode.removeEntry();
+							currentNode = null;
+						} else {
 							throw new IllegalStateException("no current entry");
 						}
-						currentNode.removeValue();
-						currentNode = null;
 					}
 				};
 			}
 
 			@Override
 			public int size() {
-				return root.size();
+				return rootNode.size();
 			}
 		};
 	}
-
 }
